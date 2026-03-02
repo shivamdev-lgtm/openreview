@@ -11,7 +11,7 @@ import { env } from "@/lib/env";
 import { botWorkflow } from "@/workflow";
 import type { ThreadMessage, WorkflowParams } from "@/workflow";
 
-import { getBotUserId, getInstallationOctokit } from "./github";
+import { getAppInfo, getInstallationOctokit } from "./github";
 
 const collectMessages = async (
   thread: Thread<unknown, unknown>
@@ -39,20 +39,22 @@ const state = env.REDIS_URL
   ? createRedisState({ url: env.REDIS_URL })
   : createMemoryState();
 
+const appInfo = await getAppInfo();
+
 export const bot = new Chat({
   adapters: {
     github: createGitHubAdapter({
       appId: env.GITHUB_APP_ID,
-      botUserId: await getBotUserId(),
+      botUserId: appInfo.botUserId,
       installationId: env.GITHUB_APP_INSTALLATION_ID,
       privateKey: env.GITHUB_APP_PRIVATE_KEY.replaceAll("\\n", "\n"),
-      userName: "openreview[bot]",
+      userName: `${appInfo.slug}[bot]`,
       webhookSecret: env.GITHUB_APP_WEBHOOK_SECRET,
     }),
   },
   logger: "debug",
   state,
-  userName: "openreview",
+  userName: appInfo.slug,
 });
 
 const handleMention = async (thread: Thread, message: Message) => {
