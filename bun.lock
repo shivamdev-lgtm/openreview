@@ -9,7 +9,9 @@
         "@chat-adapter/state-memory": "^4.15.0",
         "@chat-adapter/state-redis": "^4.15.0",
         "@t3-oss/env-nextjs": "^0.13.10",
+        "@vercel/analytics": "^1.6.1",
         "@vercel/sandbox": "^1.7.1",
+        "@vercel/speed-insights": "^1.3.1",
         "@workflow/ai": "^4.0.1-beta.54",
         "ai": "^6.0.105",
         "chat": "^4.15.0",
@@ -649,6 +651,8 @@
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
 
+    "@vercel/analytics": ["@vercel/analytics@1.6.1", "", { "peerDependencies": { "@remix-run/react": "^2", "@sveltejs/kit": "^1 || ^2", "next": ">= 13", "react": "^18 || ^19 || ^19.0.0-rc", "svelte": ">= 4", "vue": "^3", "vue-router": "^4" }, "optionalPeers": ["@remix-run/react", "@sveltejs/kit", "next", "react", "svelte", "vue", "vue-router"] }, "sha512-oH9He/bEM+6oKlv3chWuOOcp8Y6fo6/PSro8hEkgCW3pu9/OiCXiUpRUogDh3Fs3LH2sosDrx8CxeOLBEE+afg=="],
+
     "@vercel/functions": ["@vercel/functions@3.4.3", "", { "dependencies": { "@vercel/oidc": "3.2.0" }, "peerDependencies": { "@aws-sdk/credential-provider-web-identity": "*" }, "optionalPeers": ["@aws-sdk/credential-provider-web-identity"] }, "sha512-kA14KIUVgAY6VXbhZ5jjY+s0883cV3cZqIU3WhrSRxuJ9KvxatMjtmzl0K23HK59oOUjYl7HaE/eYMmhmqpZzw=="],
 
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
@@ -656,6 +660,8 @@
     "@vercel/queue": ["@vercel/queue@0.0.0-alpha.36", "", { "dependencies": { "@vercel/oidc": "^3.0.5", "mixpart": "0.0.5-alpha.1" } }, "sha512-+0RWV/ljyK0lXH7LYUbTJ02UJLhPfZIvzMOjhMdD6tEm8o+VzJGJY9KwIljohtdfeep78cFUGuWvNmT+bi29Wg=="],
 
     "@vercel/sandbox": ["@vercel/sandbox@1.7.1", "", { "dependencies": { "@vercel/oidc": "3.2.0", "async-retry": "1.3.3", "jsonlines": "0.1.1", "ms": "2.1.3", "picocolors": "^1.1.1", "tar-stream": "3.1.7", "undici": "^7.16.0", "xdg-app-paths": "5.1.0", "zod": "3.24.4" } }, "sha512-TI9InUQe7sqyO4/TIiGXC/3RHA0hTt5PpFaTWeWunkbKZae26nuPVsd+p10W/WN2THUKE+NPtTJ21dhp1Yw48w=="],
+
+    "@vercel/speed-insights": ["@vercel/speed-insights@1.3.1", "", { "peerDependencies": { "@sveltejs/kit": "^1 || ^2", "next": ">= 13", "react": "^18 || ^19 || ^19.0.0-rc", "svelte": ">= 4", "vue": "^3", "vue-router": "^4" }, "optionalPeers": ["@sveltejs/kit", "next", "react", "svelte", "vue", "vue-router"] }, "sha512-PbEr7FrMkUrGYvlcLHGkXdCkxnylCWePx7lPxxq36DNdfo9mcUjLOmqOyPDHAOgnfqgGGdmE3XI9L/4+5fr+vQ=="],
 
     "@workflow/ai": ["@workflow/ai@4.0.1-beta.54", "", { "dependencies": { "@ai-sdk/provider": "^2.0.0 || ^3.0.0", "zod": "4.3.6" }, "optionalDependencies": { "@ai-sdk/anthropic": "^2.0.0 || ^3.0.0", "@ai-sdk/gateway": "^2.0.0 || ^3.0.0", "@ai-sdk/google": "^2.0.0 || ^3.0.0", "@ai-sdk/openai": "^2.0.0 || ^3.0.0", "@ai-sdk/xai": "^2.0.0 || ^3.0.0" }, "peerDependencies": { "ai": "^5 || ^6", "workflow": "^4.1.0-beta.62" } }, "sha512-vdRc6g22Obpugia6hzskGZ8oUMRSU7mjxFCjK/M2yO3GrLZC+eNiMVMgyn1iNRQmwyA/ngVzeMKV6QyIHV2orQ=="],
 
