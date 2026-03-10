@@ -5,7 +5,6 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { createRedisState } from "@chat-adapter/state-redis";
 import { Chat, emoji } from "chat";
 import type { Message, Thread } from "chat";
-import { start } from "workflow/api";
 
 import { env } from "@/lib/env";
 import { botWorkflow } from "@/workflow";
@@ -41,6 +40,14 @@ const state = env.REDIS_URL
 
 let botInstance: Chat | null = null;
 
+const runWorkflow = async (params: WorkflowParams): Promise<void> => {
+  try {
+    await botWorkflow(params);
+  } catch (error) {
+    console.error("[bot] Workflow failed:", error);
+  }
+};
+
 const handleMention = async (thread: Thread, message: Message) => {
   await thread.adapter.addReaction(thread.id, message.id, emoji.eyes);
 
@@ -66,16 +73,15 @@ const handleMention = async (thread: Thread, message: Message) => {
     repoFullName,
   } satisfies ThreadState);
 
-  await start(botWorkflow, [
-    {
-      baseBranch: pr.base.ref,
-      messages,
-      prBranch: pr.head.ref,
-      prNumber,
-      repoFullName,
-      threadId: thread.id,
-    } satisfies WorkflowParams,
-  ]);
+  // Fire-and-forget: run the workflow without blocking the webhook response
+  void runWorkflow({
+    baseBranch: pr.base.ref,
+    messages,
+    prBranch: pr.head.ref,
+    prNumber,
+    repoFullName,
+    threadId: thread.id,
+  });
 };
 
 const initBot = async (): Promise<Chat> => {
@@ -133,13 +139,11 @@ const initBot = async (): Promise<Chat> => {
 
     const messages = await collectMessages(event.thread);
 
-    await start(botWorkflow, [
-      {
-        ...threadState,
-        messages,
-        threadId: event.thread.id,
-      } satisfies WorkflowParams,
-    ]);
+    void runWorkflow({
+      ...threadState,
+      messages,
+      threadId: event.thread.id,
+    });
   });
 
   botInstance.onReaction([emoji.thumbs_down, emoji.confused], async (event) => {

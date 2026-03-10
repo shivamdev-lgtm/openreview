@@ -1,4 +1,6 @@
-import { DurableAgent } from "@workflow/ai/agent";
+import { createOpenAI } from "@ai-sdk/openai";
+import { stepCountIs, streamText } from "ai";
+import type { ModelMessage, ToolSet } from "ai";
 
 import type { SkillMetadata } from "@/lib/skills";
 import { buildSkillsPrompt } from "@/lib/skills";
@@ -7,6 +9,7 @@ import { createLoadSkillTool } from "@/lib/tools/load-skill";
 import { createReadFileTool } from "@/lib/tools/read-file";
 import { createReplyTool } from "@/lib/tools/reply";
 import { createWriteFileTool } from "@/lib/tools/write-file";
+import { env } from "./env";
 
 const instructions = `You are an expert software engineering assistant working inside a sandbox with a git repository checked out on a PR branch.
 
@@ -61,13 +64,38 @@ Based on the user's request, decide what to do. Your capabilities include:
 ## Getting Started
 - Start by running \`gh pr diff {{PR_NUMBER}}\` to see what changed in this PR`;
 
-export const createAgent = (
+const MAX_STEPS = 20;
+const MAX_TOKENS = 200_000;
+
+function getModel() {
+  const provider = createOpenAI({
+    apiKey: env.LITELLM_API_KEY ?? "",
+    baseURL: env.LITELLM_BASE_URL ?? "http://localhost:4000/v1",
+  });
+
+  return provider(env.LITELLM_MODEL ?? "gpt-5-mini");
+}
+
+export const createAgentTools = (
+  sandboxId: string,
+  threadId: string,
+  skills: SkillMetadata[]
+): ToolSet => ({
+  bash: createBashTool(sandboxId),
+  loadSkill: createLoadSkillTool(skills),
+  readFile: createReadFileTool(sandboxId),
+  reply: createReplyTool(threadId),
+  writeFile: createWriteFileTool(sandboxId),
+});
+
+export const runAgent = async (
   sandboxId: string,
   threadId: string,
   prNumber: number,
   repoFullName: string,
-  skills: SkillMetadata[]
-) => {
+  skills: SkillMetadata[],
+  messages: ModelMessage[]
+): Promise<void> => {
   const skillsPrompt = buildSkillsPrompt(skills);
   const system = [
     instructions
@@ -78,15 +106,34 @@ export const createAgent = (
     .filter(Boolean)
     .join("\n\n");
 
-  return new DurableAgent({
-    model: "anthropic/claude-sonnet-4.6",
+  const tools = createAgentTools(sandboxId, threadId, skills);
+  const model = getModel();
+  let totalTokens = 0;
+
+  const result = streamText({
+    model,
     system,
-    tools: {
-      bash: createBashTool(sandboxId),
-      loadSkill: createLoadSkillTool(skills),
-      readFile: createReadFileTool(sandboxId),
-      reply: createReplyTool(threadId),
-      writeFile: createWriteFileTool(sandboxId),
+    messages,
+    tools,
+    stopWhen: [
+      stepCountIs(MAX_STEPS),
+      ({ steps }) => {
+        for (const step of steps) {
+          totalTokens +=
+            (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0);
+        }
+        return totalTokens > MAX_TOKENS;
+      },
+    ],
+    onStepFinish: (step) => {
+      console.log(
+        `[agent] step: ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`
+      );
     },
   });
+
+  // Consume the stream to completion
+  for await (const _part of result.textStream) {
+    // Stream is consumed; side effects happen via tool calls
+  }
 };

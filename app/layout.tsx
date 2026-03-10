@@ -1,5 +1,3 @@
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
@@ -17,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   description:
-    "An open-source, self-hosted AI code review bot. Deploy to Vercel, connect a GitHub App, and get automated PR reviews powered by Claude.",
+    "An open-source, self-hosted AI code review bot. Connect a GitHub App and get automated PR reviews powered by LLMs.",
   title: "OpenReview",
 };
 
@@ -32,8 +30,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

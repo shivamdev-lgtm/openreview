@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -7,13 +8,11 @@ import { parseFrontmatter } from "@/lib/skills";
 export const discoverSkills = async (
   directories: string[]
 ): Promise<SkillMetadata[]> => {
-  "use step";
-
   const skills: SkillMetadata[] = [];
   const seenNames = new Set<string>();
 
   for (const dir of directories) {
-    let entries;
+    let entries: Dirent[] | undefined;
 
     try {
       entries = await readdir(dir, { withFileTypes: true });

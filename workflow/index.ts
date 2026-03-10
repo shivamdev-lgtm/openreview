@@ -1,7 +1,4 @@
-import { FatalError } from "workflow";
-
-import { parseError } from "@/lib/error";
-
+import { Sandbox } from "@alibaba-group/opensandbox";
 import { addPRComment } from "./steps/add-pr-comment";
 import { checkPushAccess } from "./steps/check-push-access";
 import { commitAndPush } from "./steps/commit-and-push";
@@ -11,8 +8,9 @@ import { extendSandbox } from "./steps/extend-sandbox";
 import { getGitHubToken } from "./steps/get-github-token";
 import { hasUncommittedChanges } from "./steps/has-uncommitted-changes";
 import { installDependencies } from "./steps/install-dependencies";
-import { runAgent } from "./steps/run-agent";
+import { runAgentStep } from "./steps/run-agent";
 import { stopSandbox } from "./steps/stop-sandbox";
+import { connectToSandbox } from "@/lib/sandbox";
 
 export interface ThreadMessage {
   content: string;
@@ -28,9 +26,41 @@ export interface WorkflowParams {
   threadId: string;
 }
 
-export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
-  "use workflow";
+const detectInstallCommand = async (
+  sandbox: Sandbox
+): Promise<{ args: string; cmd: string }> => {
+  const checks = [
+    {
+      args: "install --frozen-lockfile",
+      cmd: "bun",
+      lockfile: "bun.lock",
+    },
+    {
+      args: "install --frozen-lockfile",
+      cmd: "pnpm",
+      lockfile: "pnpm-lock.yaml",
+    },
+    {
+      args: "install --frozen-lockfile",
+      cmd: "yarn",
+      lockfile: "yarn.lock",
+    },
+  ];
 
+  for (const { args, cmd, lockfile } of checks) {
+    const result = await sandbox.commands.run(`test -f ${lockfile}`, {
+      workingDirectory: "/workspace",
+    });
+    // `test -f` succeeds silently (no error) when the file exists
+    if (!result.error) {
+      return { args, cmd };
+    }
+  }
+
+  return { args: "install", cmd: "npm" };
+};
+
+export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
   const {
     baseBranch: _baseBranch,
     messages,
@@ -49,24 +79,35 @@ export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
 
 Unable to access this branch: ${pushAccess.reason}
 
-Please ensure the OpenReview app has access to this repository and branch.
-
----
-*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*`
+Please ensure the OpenReview app has access to this repository and branch.`
     );
 
-    throw new FatalError(pushAccess.reason ?? "Push access denied");
+    throw new Error(pushAccess.reason ?? "Push access denied");
   }
 
   const token = await getGitHubToken();
   const sandboxId = await createSandbox(repoFullName, token, prBranch);
 
   try {
-    await installDependencies(sandboxId);
     await configureGit(sandboxId, repoFullName, token);
     await extendSandbox(sandboxId);
 
-    const agentResult = await runAgent(
+    const sandbox = await connectToSandbox(sandboxId);
+    
+    // Install project dependencies
+    const { cmd, args } = await detectInstallCommand(sandbox);
+
+    if (cmd !== "npm") {
+      await sandbox.commands.run(`npm install -g ${cmd}`, {
+        workingDirectory: "/workspace",
+      });
+    }
+
+    await sandbox.commands.run(`${cmd} ${args}`, {
+      workingDirectory: "/workspace",
+    });
+
+    const agentResult = await runAgentStep(
       sandboxId,
       messages,
       threadId,
@@ -75,7 +116,7 @@ Please ensure the OpenReview app has access to this repository and branch.
     );
 
     if (!agentResult.success) {
-      throw new FatalError(agentResult.errorMessage ?? "Agent failed to run");
+      throw new Error(agentResult.errorMessage ?? "Agent failed to run");
     }
 
     const changed = await hasUncommittedChanges(sandboxId);
@@ -89,14 +130,8 @@ Please ensure the OpenReview app has access to this repository and branch.
         threadId,
         `## Error
 
-An error occurred while processing your request:
-
-\`\`\`
-${parseError(error)}
-\`\`\`
-
----
-*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*`
+An error occurred while processing your request. Please try again later.
+`
       );
     } catch {
       // Ignore comment failure
