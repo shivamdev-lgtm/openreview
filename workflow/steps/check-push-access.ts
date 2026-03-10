@@ -124,8 +124,6 @@ export const checkPushAccess = async (
   repoFullName: string,
   branch: string
 ): Promise<PushAccessResult> => {
-  "use step";
-
   const [owner, repo] = repoFullName.split("/");
 
   const octokit = await getInstallationOctokit().catch((error: unknown) => {

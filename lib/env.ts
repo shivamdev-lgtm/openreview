@@ -9,6 +9,11 @@ export const env = createEnv({
     GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
     GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
     REDIS_URL: z.string().url().optional(),
+    LITELLM_API_KEY: z.string().min(1).optional(),
+    LITELLM_BASE_URL: z.string().url().optional(),
+    LITELLM_MODEL: z.string().min(1).optional(),
+    OPENSANDBOX_API_KEY: z.string().min(1).optional(),
+    OPENSANDBOX_DOMAIN: z.string().min(1).optional(),
   },
   skipValidation: Boolean(process.env.SKIP_ENV_VALIDATION),
 });

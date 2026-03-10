@@ -1,31 +1,39 @@
-import { Sandbox } from "@vercel/sandbox";
 import { tool } from "ai";
 import { z } from "zod";
 
-const SANDBOX_CWD = ".";
+import { connectToSandbox, WORKSPACE_DIR } from "@/lib/sandbox";
 
-const writeFileStep = async (
+const writeFileToSandbox = async (
   sandboxId: string,
   path: string,
   content: string
 ): Promise<{ success: boolean }> => {
-  "use step";
+  const sandbox = await connectToSandbox(sandboxId);
 
-  const sandbox = await Sandbox.get({ sandboxId });
-  const resolvedPath = path.startsWith("/") ? path : `${SANDBOX_CWD}/${path}`;
+  try {
+    const resolvedPath = path.startsWith("/") ? path : `${WORKSPACE_DIR}/${path}`;
 
-  await sandbox.writeFiles([
-    { content: Buffer.from(content), path: resolvedPath },
-  ]);
+    // Ensure parent directory exists
+    const dir = resolvedPath.substring(0, resolvedPath.lastIndexOf("/"));
+    if (dir) {
+      await sandbox.commands.run(`mkdir -p "${dir}"`);
+    }
 
-  return { success: true };
+    await sandbox.files.writeFiles([
+      { path: resolvedPath, data: content },
+    ]);
+
+    return { success: true };
+  } finally {
+    sandbox.close();
+  }
 };
 
 export const createWriteFileTool = (sandboxId: string) =>
   tool({
     description:
       "Write content to a file in the sandbox. Creates parent directories if needed.",
-    execute: ({ content, path }) => writeFileStep(sandboxId, content, path),
+    execute: ({ content, path }) => writeFileToSandbox(sandboxId, path, content),
     inputSchema: z.object({
       content: z.string().describe("The content to write to the file"),
       path: z.string().describe("The path where the file should be written"),

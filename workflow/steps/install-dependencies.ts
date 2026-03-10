@@ -1,45 +1,13 @@
-import { Sandbox } from "@vercel/sandbox";
+import type { Sandbox } from "@alibaba-group/opensandbox";
 
 import { parseError } from "@/lib/error";
-
-const detectInstallCommand = async (
-  sandbox: Sandbox
-): Promise<{ args: string[]; cmd: string }> => {
-  const checks = [
-    {
-      args: ["install", "--frozen-lockfile"],
-      cmd: "bun",
-      lockfile: "bun.lock",
-    },
-    {
-      args: ["install", "--frozen-lockfile"],
-      cmd: "pnpm",
-      lockfile: "pnpm-lock.yaml",
-    },
-    {
-      args: ["install", "--frozen-lockfile"],
-      cmd: "yarn",
-      lockfile: "yarn.lock",
-    },
-  ];
-
-  for (const { args, cmd, lockfile } of checks) {
-    const result = await sandbox.runCommand("test", ["-f", lockfile]);
-    if (result.exitCode === 0) {
-      return { args, cmd };
-    }
-  }
-
-  return { args: ["install"], cmd: "npm" };
-};
+import { collectOutput, connectToSandbox } from "@/lib/sandbox";
 
 export const installDependencies = async (sandboxId: string): Promise<void> => {
-  "use step";
-
   let sandbox: Sandbox | null = null;
 
   try {
-    sandbox = await Sandbox.get({ sandboxId });
+    sandbox = await connectToSandbox(sandboxId);
   } catch (error) {
     throw new Error(
       `[installDependencies] Failed to get sandbox: ${parseError(error)}`,
@@ -49,36 +17,23 @@ export const installDependencies = async (sandboxId: string): Promise<void> => {
 
   try {
     // Install GitHub CLI
-    const ghInstall = await sandbox.runCommand("bash", [
-      "-c",
+    const ghInstall = await sandbox.commands.run(
       "command -v gh >/dev/null 2>&1 || (" +
-        "curl -sLO https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_linux_amd64.tar.gz &&" +
-        " tar xzf gh_2.62.0_linux_amd64.tar.gz &&" +
-        " mkdir -p ~/.local/bin &&" +
-        " cp -f gh_2.62.0_linux_amd64/bin/gh ~/.local/bin/ &&" +
-        " rm -rf gh_2.62.0_linux_amd64*)",
-    ]);
+        " apt update && apt install -y curl git gh)"
+    );
 
-    if (ghInstall.exitCode !== 0) {
-      const stderr = await ghInstall.stderr();
-      const stdout = await ghInstall.stdout();
+    if (ghInstall.error) {
+      console.error("GitHub CLI install error:", ghInstall.error.name, ghInstall.error.value, ghInstall.error.traceback);
       throw new Error(
-        `Failed to install GitHub CLI (exit ${ghInstall.exitCode}): ${stderr || stdout}`
+        `Failed to install GitHub CLI: ${ghInstall.error.name}: ${ghInstall.error.value}`,
       );
     }
-
-    // Install project dependencies
-    const { cmd, args } = await detectInstallCommand(sandbox);
-
-    if (cmd !== "npm") {
-      await sandbox.runCommand("npm", ["install", "-g", cmd]);
-    }
-
-    await sandbox.runCommand(cmd, args);
   } catch (error) {
     throw new Error(
       `Failed to install project dependencies: ${parseError(error)}`,
       { cause: error }
     );
+  } finally {
+    sandbox?.close();
   }
 };
