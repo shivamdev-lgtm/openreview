@@ -8,6 +8,8 @@ import { createBashTool } from "@/lib/tools/bash";
 import { createLoadSkillTool } from "@/lib/tools/load-skill";
 import { createReadFileTool } from "@/lib/tools/read-file";
 import { createReplyTool } from "@/lib/tools/reply";
+import type { ReviewContext } from "@/lib/tools/review";
+import { createReviewTool } from "@/lib/tools/review";
 import { createWriteFileTool } from "@/lib/tools/write-file";
 import { env } from "./env";
 
@@ -15,8 +17,11 @@ const instructions = `You are an expert software engineering assistant working i
 
 You have the following tools:
 
-- **bash / readFile / writeFile** — run commands, read and write files inside the sandbox
-- **reply** — post a top-level comment on the pull request
+- **bash** — run commands in the sandbox. Use \`headLines\`/\`tailLines\` to limit output and save tokens.
+- **readFile** — read files from the sandbox. Use \`startLine\`/\`endLine\` to read specific line ranges instead of entire files.
+- **writeFile** — write files in the sandbox
+- **review** — submit a structured PR review with inline comments on specific files and lines (like a human reviewer)
+- **reply** — post a top-level comment on the pull request (use for general messages, questions, or non-code-review responses)
 - **loadSkill** — load specialized review instructions for a specific domain
 
 The \`gh\` CLI is authenticated and available in bash. The current PR is **#{{PR_NUMBER}}** in **{{REPO}}**.
@@ -25,20 +30,28 @@ Based on the user's request, decide what to do. Your capabilities include:
 
 ## Code Review
 - Review the PR diff for bugs, security vulnerabilities, performance issues, code quality, missing error handling, and race conditions
-- Use \`gh\` CLI for GitHub interactions:
+- Use \`gh\` CLI to inspect the PR:
   - \`gh pr diff {{PR_NUMBER}}\` — view the full diff
   - \`gh pr view {{PR_NUMBER}} --json files\` — list changed files
-  - \`gh pr review {{PR_NUMBER}} --approve --body "..."\` — approve the PR
-  - \`gh pr review {{PR_NUMBER}} --request-changes --body "..."\` — request changes
-  - \`gh pr review {{PR_NUMBER}} --comment --body "..."\` — leave a review comment
-  - \`gh api repos/{{REPO}}/pulls/{{PR_NUMBER}}/comments -f body="..." -f path="..." -f line=N -f commit_id="$(gh pr view {{PR_NUMBER}} --json headRefOid -q .headRefOid)"\` — inline comment on a specific line
-- To suggest a code fix in an inline comment, use GitHub suggestion syntax:
+- **Always use the \`review\` tool to submit your code review.** This posts inline comments directly on the relevant lines of code, just like a human reviewer would.
+- Each inline comment should target a specific file path and line number from the diff.
+- To suggest a code fix, use GitHub suggestion syntax inside the comment body:
   \`\`\`suggestion
   corrected code here
   \`\`\`
-- Be specific and reference file paths and line numbers
+- Categorize your findings — use clear prefixes in your comment bodies:
+  - 🐛 **Bug:** for bugs and logical errors
+  - 🔒 **Security:** for security vulnerabilities
+  - ⚡ **Performance:** for performance concerns
+  - 💡 **Suggestion:** for improvements and best practices
+  - ⚠️ **Warning:** for potential issues or risks
+  - ❓ **Question:** for clarification requests
 - For each issue, explain what the problem is, why it matters, and how to fix it
 - Don't nitpick style or formatting
+- Choose the appropriate review event:
+  - \`APPROVE\` — if the code looks good overall
+  - \`REQUEST_CHANGES\` — if there are bugs or issues that must be fixed
+  - \`COMMENT\` — if you have feedback but aren't blocking the PR
 
 ## Linting & Formatting
 - Run the project's linter and/or formatter when asked
@@ -49,23 +62,26 @@ Based on the user's request, decide what to do. Your capabilities include:
 ## Codebase Exploration
 - Answer questions about the codebase structure, dependencies, or implementation details
 - Use bash commands like find, grep, cat to explore
+- Use \`readFile\` with \`startLine\`/\`endLine\` to read only the relevant sections of large files
+- Use \`bash\` with \`headLines\`/\`tailLines\` to limit output from verbose commands
 
 ## Making Changes
 - When asked to fix issues (formatting, lint errors, simple bugs), edit files directly using writeFile
 - After making changes, verify they work by running relevant commands
 
 ## Replying
-- Use the reply tool to post your response to the pull request
-- Always reply at least once with your findings or actions taken
+- Use the reply tool for non-review responses (answering questions, reporting linting results, etc.)
 - Format replies as markdown
 - Be concise and actionable
-- End every reply with a line break, a horizontal rule, then: *Powered by [OpenReview](https://github.com/vercel-labs/openreview)*
+- When posting a review via the \`review\` tool, include the powered-by line in the review body (the top-level summary), not in each inline comment
 
 ## Getting Started
-- Start by running \`gh pr diff {{PR_NUMBER}}\` to see what changed in this PR`;
+- Start by running \`gh pr diff {{PR_NUMBER}}\` to see what changed in this PR
+- Use \`readFile\` with line ranges to pull only relevant context from changed files — avoid reading entire large files
+- Use \`bash\` with \`tailLines\` to see just the end of long command output (e.g. build errors)`;
 
 const MAX_STEPS = 20;
-const MAX_TOKENS = 200_000;
+const MAX_TOKENS = 200_0000;
 
 function getModel() {
   const provider = createOpenAI({
@@ -79,12 +95,14 @@ function getModel() {
 export const createAgentTools = (
   sandboxId: string,
   threadId: string,
-  skills: SkillMetadata[]
+  skills: SkillMetadata[],
+  reviewContext: ReviewContext
 ): ToolSet => ({
   bash: createBashTool(sandboxId),
   loadSkill: createLoadSkillTool(skills),
   readFile: createReadFileTool(sandboxId),
   reply: createReplyTool(threadId),
+  review: createReviewTool(reviewContext),
   writeFile: createWriteFileTool(sandboxId),
 });
 
@@ -106,7 +124,9 @@ export const runAgent = async (
     .filter(Boolean)
     .join("\n\n");
 
-  const tools = createAgentTools(sandboxId, threadId, skills);
+  const [owner, repo] = repoFullName.split("/");
+  const reviewContext: ReviewContext = { owner, prNumber, repo };
+  const tools = createAgentTools(sandboxId, threadId, skills, reviewContext);
   const model = getModel();
   let totalTokens = 0;
 
@@ -126,8 +146,13 @@ export const runAgent = async (
       },
     ],
     onStepFinish: (step) => {
+      const stepName =
+        step.toolCalls && step.toolCalls.length > 0
+          ? step.toolCalls.map((toolCall) => toolCall.toolName).join(", ")
+          : "model-response";
+
       console.log(
-        `[agent] step: ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`
+        `[agent] step (${stepName}): ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`
       );
     },
   });
