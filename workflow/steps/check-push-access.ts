@@ -66,7 +66,7 @@ const checkBranchRestrictions = (
   if (!isAppAllowed && allowedApps.length > 0) {
     return {
       canPush: false,
-      reason: `Branch "${branch}" has push restrictions that don't include the OpenReview app`,
+      reason: `Branch "${branch}" has push restrictions that don't include the ClaryReviewer app`,
     };
   }
 
