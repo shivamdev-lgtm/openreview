@@ -84,8 +84,14 @@ const MAX_STEPS = 20;
 const MAX_TOKENS = 2_000_000;
 
 function getModel() {
+  if (!env.LITELLM_API_KEY) {
+    throw new Error(
+      "Missing LITELLM_API_KEY. Set it before running the agent."
+    );
+  }
+
   const provider = createOpenAI({
-    apiKey: env.LITELLM_API_KEY ?? "",
+    apiKey: env.LITELLM_API_KEY,
     baseURL: env.LITELLM_BASE_URL ?? "http://localhost:4000/v1",
   });
 
@@ -124,11 +130,16 @@ export const runAgent = async (
     .filter(Boolean)
     .join("\n\n");
 
-  const [owner, repo] = repoFullName.split("/");
+  const [owner, repo, ...rest] = repoFullName.split("/");
+  if (!owner || !repo || rest.length > 0) {
+    throw new Error(
+      `Invalid repo full name \"${repoFullName}\". Expected \"owner/repo\".`
+    );
+  }
+
   const reviewContext: ReviewContext = { owner, prNumber, repo };
   const tools = createAgentTools(sandboxId, threadId, skills, reviewContext);
   const model = getModel();
-  let totalTokens = 0;
 
   const result = streamText({
     model,
@@ -138,10 +149,12 @@ export const runAgent = async (
     stopWhen: [
       stepCountIs(MAX_STEPS),
       ({ steps }) => {
-        for (const step of steps) {
-          totalTokens +=
-            (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0);
-        }
+        const totalTokens = steps.reduce(
+          (sum, step) =>
+            sum + (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0),
+          0
+        );
+
         return totalTokens > MAX_TOKENS;
       },
     ],
